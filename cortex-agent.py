@@ -1,9 +1,13 @@
+import ctypes
 import hashlib
-import os.path
+import os
+import sys
 import time
 import datetime
 import configparser
 import threading
+import subprocess
+import argparse
 
 import requests
 import machineid
@@ -20,6 +24,54 @@ class FailedAgentCheckIn(Exception): pass
 class FailedToUploadFile(Exception): pass
 
 
+class NeedPermissions(Exception): pass
+
+
+class Parser(argparse.ArgumentParser):
+
+    def __init__(self):
+        super(Parser, self).__init__()
+
+    @staticmethod
+    def optparse():
+        parser = argparse.ArgumentParser()
+        parser.add_argument(
+            "--install-task", dest="installTask", action="store_true",
+            help="Install the schtasks at logon, this way the program runs at startup"
+        )
+        parser.add_argument(
+            "--uninstall-task", dest="uninstallTask", action="store_true",
+            help="Uninstall the schtask at login, useless for when the program is deleted"
+        )
+        return parser.parse_args()
+
+
+class InstallCortexAgent(object):
+
+    def __init__(self):
+        self.task_name = "Traceix Cortex Agent"
+
+    def install_schtask(self):
+        exe_path = os.path.abspath(sys.executable)
+        workdir = os.path.dirname(exe_path)
+
+        tr = f'cmd.exe /c "cd /d {workdir} && \\"{exe_path}\\""'
+        username = os.environ.get("USERNAME", "")
+        cmd = [
+            "schtasks", "/Create", "/F",
+            "/TN", self.task_name,
+            "/SC", "ONLOGON",
+            "/RL", "HIGHEST",
+            "/RU", username,
+            "/IT",
+            "/TR", tr
+        ]
+        subprocess.run(cmd, check=True)
+
+    def uninstall_schtask(self):
+        subprocess.run(["schtasks", "/Delete", "/TN", self.task_name, "/F"], check=False)
+
+
 class AgentHandler(FileSystemEventHandler):
 
     def on_created(self, event: DirCreatedEvent | FileCreatedEvent) -> None:
@@ -30,6 +82,13 @@ class AgentHandler(FileSystemEventHandler):
 
 
 BASE_URL = "https://ai.perkinsfund.org"
+
+
+def is_admin():
+    try:
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except:
+        return False
 
 
 def calc_shasum(path):
@@ -193,7 +252,16 @@ def main():
 
 
 if __name__ == '__main__':
-    schedule = BackgroundScheduler(timezone="UTC")
-    schedule.add_job(handle_check_in, IntervalTrigger(minutes=30))
-    schedule.start()
-    main()
+    if not is_admin():
+        raise NeedPermissions("You need elevated permissions to run this application")
+    else:
+        opts = Parser().optparse()
+        if opts.installTask:
+            InstallCortexAgent().install_schtask()
+        elif opts.uninstallTask:
+            InstallCortexAgent().uninstall_schtask()
+        else:
+            schedule = BackgroundScheduler(timezone="UTC")
+            schedule.add_job(handle_check_in, IntervalTrigger(minutes=30))
+            schedule.start()
+            main()
