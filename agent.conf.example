@@ -1,0 +1,5 @@
+[agent_conf]
+uuid = agnt-xxxxxxx-xxxxxxxxxxxxxxx-xxxxxxx
+api_key = xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+max_file_size = xxxxxxxx
+watch_folder = C:\\my\\folder
