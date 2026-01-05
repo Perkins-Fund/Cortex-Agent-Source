@@ -17,3 +17,15 @@ pyinstaller --onefile --name cortex-agent --manifest cortex-agent.manifest --ver
 ```
 
 File will be in `dist/cortex-agent*`
+
+# Usage
+
+There are currently the following arguments that you can use:
+```bash
+usage: cortex-agent.py [-h] [--install-task] [--uninstall-task]
+
+options:
+  -h, --help        show this help message and exit
+  --install-task    Install the schtasks at logon, this way the program runs at startup
+  --uninstall-task  Uninstall the schtask at login, useless for when the program is deleted
+```
