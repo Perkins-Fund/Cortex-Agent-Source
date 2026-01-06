@@ -6,11 +6,11 @@ import sys
 from configparser import ConfigParser
 from pathlib import Path
 
+
 BASE_DIR = Path(r"C:\Program Files\CortexAgents")
 CONF_NAME = "agent.conf"
 AGENT_EXE_NAME = "cortex-agent.exe"
 TASK_FOLDER = r"CortexAgents"
-
 UUID_RE = re.compile(r"^agnt-[A-Za-z0-9-]{8,}$")
 
 
