@@ -1,13 +1,13 @@
 import ctypes
 import hashlib
 import os
-import sys
 import time
 import datetime
 import configparser
-import threading
-import subprocess
 import argparse
+from concurrent.futures import ThreadPoolExecutor
+import logging
+from logging.handlers import RotatingFileHandler
 
 import requests
 import machineid
@@ -19,16 +19,46 @@ from watchdog.observers import Observer
 
 
 class FailedAgentCheckIn(Exception): pass
-
-
 class FailedToUploadFile(Exception): pass
-
-
 class NeedPermissions(Exception): pass
+class NoConfigFound(Exception): pass
+
+
+LOG_FILE = "cortex-agent.log"
+
+
+def setup_logging():
+    logger = logging.getLogger("cortex-agent")
+    logger.setLevel(logging.INFO)
+
+    if logger.handlers:
+        return logger
+
+    fmt = logging.Formatter(
+        fmt="%(asctime)sZ [%(levelname)s] %(threadName)s %(message)s",
+        datefmt="%Y-%m-%dT%H:%M:%S"
+    )
+
+    file_handler = RotatingFileHandler(
+        LOG_FILE,
+        maxBytes=5 * 1024 * 1024,  # 5MB
+        backupCount=5,             # keep last 5 files
+        encoding="utf-8"
+    )
+    file_handler.setFormatter(fmt)
+    file_handler.setLevel(logging.INFO)
+
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(fmt)
+    console_handler.setLevel(logging.INFO)
+
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
+    logger.propagate = False
+    return logger
 
 
 class Parser(argparse.ArgumentParser):
-
     def __init__(self):
         super(Parser, self).__init__()
 
@@ -46,42 +76,24 @@ class Parser(argparse.ArgumentParser):
         return parser.parse_args()
 
 
-class InstallCortexAgent(object):
-
-    def __init__(self):
-        self.task_name = "Traceix Cortex Agent"
-
-    def install_schtask(self):
-        exe_path = os.path.abspath(sys.executable)
-        workdir = os.path.dirname(exe_path)
-
-        tr = f'cmd.exe /c "cd /d {workdir} && \\"{exe_path}\\""'
-        username = os.environ.get("USERNAME", "")
-        cmd = [
-            "schtasks", "/Create", "/F",
-            "/TN", self.task_name,
-            "/SC", "ONLOGON",
-            "/RL", "HIGHEST",
-            "/RU", username,
-            "/IT",
-            "/TR", tr
-        ]
-        subprocess.run(cmd, check=True)
-
-    def uninstall_schtask(self):
-        subprocess.run(["schtasks", "/Delete", "/TN", self.task_name, "/F"], check=False)
+LOG = setup_logging()
+MAX_CONCURRENT_ANALYSES = 6
+EXECUTOR = ThreadPoolExecutor(max_workers=MAX_CONCURRENT_ANALYSES)
+BASE_URL = "http://172.25.108.61:5132"
 
 
 class AgentHandler(FileSystemEventHandler):
-
     def on_created(self, event: DirCreatedEvent | FileCreatedEvent) -> None:
+        if getattr(event, "is_directory", False):
+            return
+
         file_path = event.src_path
-        print(f"File created in watch folder: {file_path}, handling file upload")
-        t = threading.Thread(target=handle_file_uploads, args=(file_path,))
-        t.start()
+        LOG.info(f"File created in watch folder: {file_path}, queued for analysis")
 
-
-BASE_URL = "https://ai.perkinsfund.org"
+        try:
+            EXECUTOR.submit(handle_file_uploads, file_path)
+        except RuntimeError:
+            return
 
 
 def is_admin():
@@ -114,36 +126,63 @@ def get_client_id():
 
 
 def handle_file_uploads(file_path):
+    try:
+        if not os.path.isfile(file_path):
+            return None
+    except Exception:
+        return None
+
     api_key, agent_uuid = parse_config()
     headers = {
         "x-api-key": api_key,
         "x-agent-id": agent_uuid
     }
+
     max_file_size = parse_config(get_accepted_size=True)
-    if os.path.getsize(file_path) > int(max_file_size):
-        return None
-    file_data = {"file": open(file_path, 'rb')}
-    url = f"{BASE_URL}/api/traceix/agent/run"
     try:
-        req = requests.post(url, files=file_data, headers=headers)
-    except:
+        if os.path.getsize(file_path) > int(max_file_size):
+            LOG.info(f"Skipping (too large): {file_path}")
+            return None
+    except Exception:
+        return None
+
+    url = f"{BASE_URL}/api/traceix/agent/run"
+    LOG.info(f"Submitting for analysis: {file_path}")
+
+    try:
+        with open(file_path, 'rb') as f:
+            file_data = {"file": f}
+            req = requests.post(url, files=file_data, headers=headers)
+    except Exception:
+        LOG.exception(f"Upload failed (request error): {file_path}")
         req = None
+
     if req is not None:
-        data = req.json()
+        try:
+            data = req.json()
+        except Exception:
+            LOG.exception(f"Upload failed (invalid JSON response): {file_path}")
+            return None
+
         results = None
-        if data['success']:
-            status = data['results']["status"]
-            uuid_ = data['results']['uuid']
+        if data.get('success'):
+            uuid_ = data.get("results", {}).get("uuid")
+            if not uuid_:
+                LOG.error(f"Upload succeeded but missing uuid in response: {file_path}")
+                return None
+
             is_done = False
             while not is_done:
                 status_check = handle_status_check(uuid_)
-                if status is None:
+                if status_check is None:
                     raise FailedToUploadFile(f"Failed to upload file: {file_path}")
-                if "status" in status_check['results'].keys():
+
+                if "status" in status_check.get('results', {}).keys():
                     time.sleep(1)
                 else:
                     results = status_check['results']
                     is_done = True
+
             handle_alert_upload(
                 **results,
                 sha256sum=calc_shasum(file_path),
@@ -177,12 +216,21 @@ def handle_alert_upload(**kwargs):
     url = f"{BASE_URL}/api/traceix/agent/alert"
     try:
         req = requests.post(url, json=post_data, headers=headers)
-    except:
+    except Exception:
+        LOG.exception(f"Alert upload failed (request error): {file_path}")
         req = None
+
     if req is not None:
-        data = req.json()
-        if data['results']['ok']:
-            print(f"File ({file_path}) uploaded successfully to alert dashboard")
+        try:
+            data = req.json()
+        except Exception:
+            LOG.exception(f"Alert upload failed (invalid JSON response): {file_path}")
+            return None
+
+        if data.get('results', {}).get('ok'):
+            LOG.info(f"Alert uploaded successfully: {file_path} sha256={sha256sum}")
+        else:
+            LOG.error(f"Alert upload failed (server said not ok): {file_path}")
 
 
 def handle_status_check(uuid):
@@ -192,29 +240,45 @@ def handle_status_check(uuid):
     url = f"{BASE_URL}/api/traceix/agent/status"
     try:
         req = requests.post(url, json=data, headers=headers)
-    except:
+    except Exception:
+        LOG.exception(f"Status check failed (request error): uuid={uuid}")
         req = None
     if req is not None:
-        return req.json()
+        try:
+            return req.json()
+        except Exception:
+            LOG.exception(f"Status check failed (invalid JSON response): uuid={uuid}")
+            return None
     else:
         return None
 
 
 def handle_check_in():
+    LOG.info("Performing agent check in")
     api_key, agent_uuid = parse_config()
     headers = {"x-api-key": api_key}
     data = {"agent_uuid": agent_uuid}
     url = f"{BASE_URL}/api/traceix/agent/checkin"
     try:
         req = requests.post(url, headers=headers, json=data)
-    except:
+    except Exception:
+        LOG.exception("Agent check-in failed (request error)")
         req = None
+
     if req is not None:
-        data = req.json()
-        if data['results']['ok']:
+        try:
+            data = req.json()
+        except Exception:
+            LOG.exception("Agent check-in failed (invalid JSON response)")
+            return None
+
+        if data.get('results', {}).get('ok'):
             timestamp = datetime.datetime.now(tz=datetime.timezone.utc).timestamp()
             with open('.last_check_in', 'w') as fh:
                 fh.write(str(timestamp))
+            LOG.info("Agent check-in ok")
+        else:
+            raise FailedAgentCheckIn("Agent failed to check in (server returned not ok)")
     else:
         raise FailedAgentCheckIn("Agent failed to check in")
 
@@ -237,31 +301,35 @@ def main():
     handler = AgentHandler()
     observer = Observer()
     folder = parse_config(get_folder=True)
+
+    LOG.info(f"Starting watcher on folder: {folder}")
+    LOG.info(f"Max concurrent analyses: {MAX_CONCURRENT_ANALYSES}")
+    LOG.info(f"Logging to: {LOG_FILE} (rotating)")
+
     observer.schedule(handler, path=folder, recursive=True)
     observer.start()
     try:
         while True:
             time.sleep(1)
     except FailedAgentCheckIn:
-        print("Failed to perform agent check in")
+        LOG.exception("Failed to perform agent check in")
     except FailedToUploadFile:
-        print("Failed to upload a created file")
+        LOG.exception("Failed to upload a created file")
     finally:
         observer.stop()
         observer.join()
+        EXECUTOR.shutdown(wait=True)
+        LOG.info("Shutdown complete")
 
 
 if __name__ == '__main__':
+    if not os.path.exists("agent.conf"):
+        raise NoConfigFound("There is not a valid config file available")
     if not is_admin():
         raise NeedPermissions("You need elevated permissions to run this application")
     else:
-        opts = Parser().optparse()
-        if opts.installTask:
-            InstallCortexAgent().install_schtask()
-        elif opts.uninstallTask:
-            InstallCortexAgent().uninstall_schtask()
-        else:
-            schedule = BackgroundScheduler(timezone="UTC")
-            schedule.add_job(handle_check_in, IntervalTrigger(minutes=30))
-            schedule.start()
-            main()
+        handle_check_in()
+        schedule = BackgroundScheduler(timezone="UTC")
+        schedule.add_job(handle_check_in, IntervalTrigger(minutes=30))
+        schedule.start()
+        main()
