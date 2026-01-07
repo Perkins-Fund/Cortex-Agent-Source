@@ -8,3 +8,5 @@ agent.conf
 certs/signing_cert.crt
 build/*
 dist/*
+*.spec
+cortex-agent.log
