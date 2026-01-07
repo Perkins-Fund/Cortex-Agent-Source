@@ -4,13 +4,14 @@ import os
 import time
 import datetime
 import configparser
-import argparse
 from concurrent.futures import ThreadPoolExecutor
 import logging
 from logging.handlers import RotatingFileHandler
 
 import requests
 import machineid
+import psutil
+from win10toast import ToastNotifier
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -29,7 +30,7 @@ LOG_FILE = "cortex-agent.log"
 
 def setup_logging():
     logger = logging.getLogger("cortex-agent")
-    logger.setLevel(logging.INFO)
+    logger.setLevel(logging.DEBUG)
 
     if logger.handlers:
         return logger
@@ -41,45 +42,21 @@ def setup_logging():
 
     file_handler = RotatingFileHandler(
         LOG_FILE,
-        maxBytes=5 * 1024 * 1024,  # 5MB
-        backupCount=5,             # keep last 5 files
+        maxBytes=5 * 1024 * 1024,
+        backupCount=3,
         encoding="utf-8"
     )
     file_handler.setFormatter(fmt)
-    file_handler.setLevel(logging.INFO)
+    file_handler.setLevel(logging.DEBUG)
 
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(fmt)
-    console_handler.setLevel(logging.INFO)
+    console_handler.setLevel(logging.DEBUG)
 
     logger.addHandler(file_handler)
     logger.addHandler(console_handler)
     logger.propagate = False
     return logger
-
-
-class Parser(argparse.ArgumentParser):
-    def __init__(self):
-        super(Parser, self).__init__()
-
-    @staticmethod
-    def optparse():
-        parser = argparse.ArgumentParser()
-        parser.add_argument(
-            "--install-task", dest="installTask", action="store_true",
-            help="Install the schtasks at logon, this way the program runs at startup"
-        )
-        parser.add_argument(
-            "--uninstall-task", dest="uninstallTask", action="store_true",
-            help="Uninstall the schtask at login, useless for when the program is deleted"
-        )
-        return parser.parse_args()
-
-
-LOG = setup_logging()
-MAX_CONCURRENT_ANALYSES = 6
-EXECUTOR = ThreadPoolExecutor(max_workers=MAX_CONCURRENT_ANALYSES)
-BASE_URL = "http://172.25.108.61:5132"
 
 
 class AgentHandler(FileSystemEventHandler):
@@ -96,11 +73,29 @@ class AgentHandler(FileSystemEventHandler):
             return
 
 
+LOG = setup_logging()
+MAX_CONCURRENT_ANALYSES = round((psutil.cpu_count(logical=False) / 2) - 1)
+if MAX_CONCURRENT_ANALYSES == 0:
+    MAX_CONCURRENT_ANALYSES = 1
+EXECUTOR = ThreadPoolExecutor(max_workers=MAX_CONCURRENT_ANALYSES)
+BASE_URL = "http://172.25.108.61:5132"
+
+
 def is_admin():
     try:
         return bool(ctypes.windll.shell32.IsUserAnAdmin())
     except:
         return False
+
+
+def perform_alert(file_path):
+    toast = ToastNotifier()
+    toast.show_toast(
+        title="Cortex-Agent Alert",
+        msg=f"File: {file_path} has been identified as malicious, an alert has been uploaded to the Traceix dashboard",
+        duration=4,
+        threaded=True
+    )
 
 
 def calc_shasum(path):
@@ -163,9 +158,9 @@ def handle_file_uploads(file_path):
         except Exception:
             LOG.exception(f"Upload failed (invalid JSON response): {file_path}")
             return None
-
         results = None
         if data.get('success'):
+            LOG.info(f"File: {file_path} submitted successfully, starting waiting process")
             uuid_ = data.get("results", {}).get("uuid")
             if not uuid_:
                 LOG.error(f"Upload succeeded but missing uuid in response: {file_path}")
@@ -173,12 +168,13 @@ def handle_file_uploads(file_path):
 
             is_done = False
             while not is_done:
+                LOG.debug("Waiting for analysis to complete")
                 status_check = handle_status_check(uuid_)
                 if status_check is None:
                     raise FailedToUploadFile(f"Failed to upload file: {file_path}")
 
                 if "status" in status_check.get('results', {}).keys():
-                    time.sleep(1)
+                    time.sleep(5)
                 else:
                     results = status_check['results']
                     is_done = True
@@ -219,6 +215,10 @@ def handle_alert_upload(**kwargs):
     except Exception:
         LOG.exception(f"Alert upload failed (request error): {file_path}")
         req = None
+
+    if classification.lower() == "malicious":
+        LOG.warning(f"File: {file_path} identified as malicious")
+        perform_alert(file_path)
 
     if req is not None:
         try:
