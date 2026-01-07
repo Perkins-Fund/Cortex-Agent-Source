@@ -11,9 +11,18 @@ To make a Cortex Agent you will need to go to [Traceix](https://traceix.com?utm_
 
 # Building From Source
 
+Build the Cortex Agent script is simple, just run the following commands:
 ```powershell
+cd folder_with_agent_source
 pip install -r requirements.txt
-pyinstaller --onefile --name cortex-agent --manifest cortex-agent.manifest --version-file version_info.txt --icon logo.ico cortex-agent.py
+pyinstaller --clean --onefile --name cortex-agent --manifest assets/cortex-agent.manifest --version-file assets/cortex-agent-version-info.txt --icon assets/cortex-agent.ico cortex-agent.py
+```
+
+To build the installer, you do basically the same thing with a couple different caveats:
+```powershell
+cd folder_with_agent_source
+pip install -r requirements.txt
+pyinstaller --clean --onefile --name install --manifest assets/install.manifest --version-file assets/install-version-info.txt --icon assets/install.ico install.py
 ```
 
 File will be in `dist/cortex-agent*`
