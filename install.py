@@ -41,9 +41,11 @@ def create_install_folder():
     return install_dir
 
 
-def create_name(just_agent=False):
+def create_name(just_agent=False, filename=None):
+    if filename is None:
+        filename = "agent.conf"
     try:
-        with open("agent.conf") as fh:
+        with open(filename) as fh:
             for line in fh.read().split("\n"):
                 if "uuid" in line:
                     if not just_agent:
@@ -58,7 +60,7 @@ def create_name(just_agent=False):
 
 
 def create_schtask(installation_dir):
-    task_name = create_name()
+    task_name = create_name(filename=f"{installation_dir}{os.path.sep}agent.conf")
     proc = subprocess.Popen([
         "schtasks",
         "/Query"
