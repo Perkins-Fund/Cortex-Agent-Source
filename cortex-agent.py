@@ -90,15 +90,16 @@ class AgentHandler(FileSystemEventHandler):
             # add the file to the executor and upload it
             EXECUTOR.submit(handle_file_uploads, file_path)
         except RuntimeError:
+            LOG.exception("caught exception during file handling")
             return
 
 
 # logger
 LOG = setup_logging()
 
-# max concurrent processes so we don't overload the computer
+# max concurrent processes. This way we don't overload the computer
 # max is: (CPU_COUNT / 2) - 1 || 1
-# minimum number is 1
+# minimum number of threads used is 1
 MAX_CONCURRENT_ANALYSES = round((psutil.cpu_count(logical=False) / 2) - 1)
 if MAX_CONCURRENT_ANALYSES == 0:
     MAX_CONCURRENT_ANALYSES = 1
@@ -118,10 +119,25 @@ def is_admin():
         return False
 
 
+def api_check():
+    """
+    perform a simple basic check on the API to verify that it's online
+    :return:
+    """
+    try:
+        requests.get(f"{BASE_URL}/", timeout=3)
+        LOG.info("API check succeeded starting process")
+        return True
+    except:
+        LOG.exception("API check failed, assuming API is down and killing process")
+        return False
+
+
 def perform_alert(file_path):
     """
     perform a Windows alert box
     """
+    LOG.debug(f"Caught file the triggered notification, performing notification, file: {file_path}")
     toast = ToastNotifier()
     toast.show_toast(
         title="Cortex-Agent Alert",
@@ -315,7 +331,6 @@ def handle_status_check(uuid):
 def handle_check_in():
     """
     handle the agent check-ins
-    :return:
     """
     LOG.info("Performing agent check in")
     api_key, agent_uuid = parse_config()
@@ -392,13 +407,16 @@ def main():
 
 
 if __name__ == '__main__':
-    if not os.path.exists("agent.conf"):
-        raise NoConfigFound("There is not a valid config file available")
-    if not is_admin():
-        raise NeedPermissions("You need elevated permissions to run this application")
+    if not api_check():
+        LOG.warning("API check failed, see log file for traceback")
     else:
-        handle_check_in()
-        schedule = BackgroundScheduler(timezone="UTC")
-        schedule.add_job(handle_check_in, IntervalTrigger(minutes=30))
-        schedule.start()
-        main()
+        if not os.path.exists("agent.conf"):
+            raise NoConfigFound("There is not a valid config file available")
+        if not is_admin():
+            raise NeedPermissions("You need elevated permissions to run this application")
+        else:
+            handle_check_in()
+            schedule = BackgroundScheduler(timezone="UTC")
+            schedule.add_job(handle_check_in, IntervalTrigger(minutes=30))
+            schedule.start()
+            main()
