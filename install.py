@@ -6,25 +6,34 @@ import subprocess
 import shutil
 
 
+# class to throw exception if the task already exists
 class TaskAlreadyExists(Exception): pass
 
 
+# class to throw exception if we can't query the scheduled tasks
 class UnableToQueryTasks(Exception): pass
 
 
+# class to throw exception if we can't create the task
 class UnableToCreateTask(Exception): pass
 
 
+# class to throw exception if we can't move the files
 class UnableToMoveFiles(Exception): pass
 
 
+# class to throw exception if we don't have enough perms to run
 class NeedPerms(Exception): pass
 
 
+# the directory we want to install the agents into
 INSTALL_DIR = "C:\\Program Files\\CortexAgents"
 
 
 def is_admin():
+    """
+    check if the user is admin
+    """
     try:
         return bool(ctypes.windll.shell32.IsUserAnAdmin())
     except:
@@ -32,6 +41,9 @@ def is_admin():
 
 
 def create_install_folder():
+    """
+    create the installation folder and the agent install folder
+    """
     if not os.path.exists(INSTALL_DIR):
         os.makedirs(INSTALL_DIR)
     agent_name = create_name(just_agent=True)
@@ -42,6 +54,9 @@ def create_install_folder():
 
 
 def create_name(just_agent=False, filename=None):
+    """
+    create the name for the agent scheduled task
+    """
     if filename is None:
         filename = "agent.conf"
     try:
@@ -60,7 +75,11 @@ def create_name(just_agent=False, filename=None):
 
 
 def create_schtask(installation_dir):
+    """
+    create the scheduled task
+    """
     task_name = create_name(filename=f"{installation_dir}{os.path.sep}agent.conf")
+    # query tasks first to verify we aren't making the same task twice
     proc = subprocess.Popen([
         "schtasks",
         "/Query"
@@ -73,6 +92,7 @@ def create_schtask(installation_dir):
                 raise TaskAlreadyExists(f"A task with name: {task_name} already exists")
     else:
         raise UnableToQueryTasks(err.decode("utf-8"))
+    # create the task
     task_command = f'cmd.exe /c "cd /d ""{installation_dir}"" && ""{installation_dir}{os.path.sep}cortex-agent.exe"""'
     proc = subprocess.Popen([
         "schtasks",
@@ -89,6 +109,9 @@ def create_schtask(installation_dir):
 
 
 def move_files():
+    """
+    move the files to the installation location
+    """
     try:
         agent_file = "cortex-agent.exe"
         agent_config = "agent.conf"
@@ -101,6 +124,9 @@ def move_files():
 
 
 def main():
+    """
+    main function
+    """
     if not is_admin():
         raise NeedPerms("You need to run this script as an admin")
     print("Moving files to new location")

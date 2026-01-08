@@ -19,16 +19,30 @@ from watchdog.events import FileSystemEventHandler, DirCreatedEvent, FileCreated
 from watchdog.observers import Observer
 
 
+# class to hold check in failures exception
 class FailedAgentCheckIn(Exception): pass
+
+
+# class to hold upload failures exception
 class FailedToUploadFile(Exception): pass
+
+
+# class to hold permission failures exception
 class NeedPermissions(Exception): pass
+
+
+# class to hold config missing exception
 class NoConfigFound(Exception): pass
 
 
+# log file name
 LOG_FILE = "cortex-agent.log"
 
 
 def setup_logging():
+    """
+    setup the logging mechanism so that we log to output and to file and rotate the log files
+    """
     logger = logging.getLogger("cortex-agent")
     logger.setLevel(logging.DEBUG)
 
@@ -40,6 +54,7 @@ def setup_logging():
         datefmt="%Y-%m-%dT%H:%M:%S"
     )
 
+    # rotate logs every 5MB, max of 3 log files
     file_handler = RotatingFileHandler(
         LOG_FILE,
         maxBytes=5 * 1024 * 1024,
@@ -60,7 +75,11 @@ def setup_logging():
 
 
 class AgentHandler(FileSystemEventHandler):
+    """
+    handler for file system events
+    """
     def on_created(self, event: DirCreatedEvent | FileCreatedEvent) -> None:
+        # skip directories
         if getattr(event, "is_directory", False):
             return
 
@@ -68,27 +87,57 @@ class AgentHandler(FileSystemEventHandler):
         LOG.info(f"File created in watch folder: {file_path}, queued for analysis")
 
         try:
+            # add the file to the executor and upload it
             EXECUTOR.submit(handle_file_uploads, file_path)
         except RuntimeError:
+            LOG.exception("caught exception during file handling")
             return
 
 
+# logger
 LOG = setup_logging()
+
+# max concurrent processes. This way we don't overload the computer
+# max is: (CPU_COUNT / 2) - 1 || 1
+# minimum number of threads used is 1
 MAX_CONCURRENT_ANALYSES = round((psutil.cpu_count(logical=False) / 2) - 1)
 if MAX_CONCURRENT_ANALYSES == 0:
     MAX_CONCURRENT_ANALYSES = 1
+# the variable that holds the processes
 EXECUTOR = ThreadPoolExecutor(max_workers=MAX_CONCURRENT_ANALYSES)
+# base URL for the API
 BASE_URL = "http://172.25.108.61:5132"
 
 
 def is_admin():
+    """
+    check if the user is an admin
+    """
     try:
         return bool(ctypes.windll.shell32.IsUserAnAdmin())
     except:
         return False
 
 
+def api_check():
+    """
+    perform a simple basic check on the API to verify that it's online
+    :return:
+    """
+    try:
+        requests.get(f"{BASE_URL}/", timeout=3)
+        LOG.info("API check succeeded starting process")
+        return True
+    except:
+        LOG.exception("API check failed, assuming API is down and killing process")
+        return False
+
+
 def perform_alert(file_path):
+    """
+    perform a Windows alert box
+    """
+    LOG.debug(f"Caught file the triggered notification, performing notification, file: {file_path}")
     toast = ToastNotifier()
     toast.show_toast(
         title="Cortex-Agent Alert",
@@ -99,6 +148,9 @@ def perform_alert(file_path):
 
 
 def calc_shasum(path):
+    """
+    calculate the SHA-256 sum of a file
+    """
     h = hashlib.sha256()
     buffer = 65532
     with open(path, 'rb') as fh:
@@ -111,6 +163,9 @@ def calc_shasum(path):
 
 
 def get_client_id():
+    """
+    get or generate a client_id for the users system
+    """
     if not os.path.exists('.clientid'):
         client_id = machineid.hashed_id("cortex-agent")[0:15]
         with open('.clientid', 'w') as fh:
@@ -121,6 +176,9 @@ def get_client_id():
 
 
 def handle_file_uploads(file_path):
+    """
+    handle the file uploads
+    """
     try:
         if not os.path.isfile(file_path):
             return None
@@ -167,6 +225,9 @@ def handle_file_uploads(file_path):
                 return None
 
             is_done = False
+            did_fail = False
+            wait_time = 360
+            waited = 0
             while not is_done:
                 LOG.debug("Waiting for analysis to complete")
                 status_check = handle_status_check(uuid_)
@@ -174,21 +235,32 @@ def handle_file_uploads(file_path):
                     raise FailedToUploadFile(f"Failed to upload file: {file_path}")
 
                 if "status" in status_check.get('results', {}).keys():
+                    # break if we hit a certain time limit so we don't overload the log file
+                    if waited >= wait_time:
+                        did_fail = True
+                        is_done = True
+                        break
                     time.sleep(5)
+                    waited += 5
                 else:
                     results = status_check['results']
                     is_done = True
-
-            handle_alert_upload(
-                **results,
-                sha256sum=calc_shasum(file_path),
-                file_path=file_path
-            )
+            if not did_fail:
+                handle_alert_upload(
+                    **results,
+                    sha256sum=calc_shasum(file_path),
+                    file_path=file_path
+                )
+            else:
+                LOG.error(f"Failed to upload file: {file_path} waited for 120 seconds, skipping")
         else:
             raise FailedAgentCheckIn(f"Failed to upload: {file_path}")
 
 
 def handle_alert_upload(**kwargs):
+    """
+    upload the alert to the Traceix dashboard
+    """
     client_id = get_client_id()
     api_key, agent_uuid = parse_config()
     classification = kwargs.get("classification", "unknown")
@@ -234,6 +306,9 @@ def handle_alert_upload(**kwargs):
 
 
 def handle_status_check(uuid):
+    """
+    handle the status checking of the file upload
+    """
     api_key, agent_uuid = parse_config()
     headers = {"x-api-key": api_key}
     data = {"uuid": uuid, "agent_uuid": agent_uuid}
@@ -254,6 +329,9 @@ def handle_status_check(uuid):
 
 
 def handle_check_in():
+    """
+    handle the agent check-ins
+    """
     LOG.info("Performing agent check in")
     api_key, agent_uuid = parse_config()
     headers = {"x-api-key": api_key}
@@ -284,6 +362,9 @@ def handle_check_in():
 
 
 def parse_config(path="agent.conf", get_alert_on=False, get_accepted_size=False, get_folder=False):
+    """
+    parse the configuration file
+    """
     config = configparser.ConfigParser()
     config.read(path)
     if get_folder:
@@ -298,6 +379,9 @@ def parse_config(path="agent.conf", get_alert_on=False, get_accepted_size=False,
 
 
 def main():
+    """
+    main function
+    """
     handler = AgentHandler()
     observer = Observer()
     folder = parse_config(get_folder=True)
@@ -323,13 +407,16 @@ def main():
 
 
 if __name__ == '__main__':
-    if not os.path.exists("agent.conf"):
-        raise NoConfigFound("There is not a valid config file available")
-    if not is_admin():
-        raise NeedPermissions("You need elevated permissions to run this application")
+    if not api_check():
+        LOG.warning("API check failed, see log file for traceback")
     else:
-        handle_check_in()
-        schedule = BackgroundScheduler(timezone="UTC")
-        schedule.add_job(handle_check_in, IntervalTrigger(minutes=30))
-        schedule.start()
-        main()
+        if not os.path.exists("agent.conf"):
+            raise NoConfigFound("There is not a valid config file available")
+        if not is_admin():
+            raise NeedPermissions("You need elevated permissions to run this application")
+        else:
+            handle_check_in()
+            schedule = BackgroundScheduler(timezone="UTC")
+            schedule.add_job(handle_check_in, IntervalTrigger(minutes=30))
+            schedule.start()
+            main()
