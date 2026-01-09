@@ -1,10 +1,11 @@
 import os
+import sys
+import time
 import ctypes
 import random
 import subprocess
 
 import shutil
-from win10toast import ToastNotifier
 
 
 # class to throw exception if the task already exists
@@ -39,19 +40,6 @@ def is_admin():
         return bool(ctypes.windll.shell32.IsUserAnAdmin())
     except:
         return False
-
-
-def perform_alert():
-    """
-    perform a Windows alert box
-    """
-    toast = ToastNotifier()
-    toast.show_toast(
-        title="Cortex-Agent-Installer",
-        msg=f"Your Cortex Agent has been installed, for the changes to take effect please restart your PC.",
-        duration=5,
-        threaded=False
-    )
 
 
 def create_install_folder():
@@ -120,6 +108,7 @@ def create_schtask(installation_dir):
     out, err = proc.communicate()
     if err:
         raise UnableToCreateTask(err.decode('utf-8'))
+    return task_name
 
 
 def move_files():
@@ -137,20 +126,37 @@ def move_files():
         raise UnableToMoveFiles(str(e))
 
 
+def print_step(step_name, status="wait"):
+    if status == "wait":
+        print(f"  ├─ {step_name} ", end="")
+        sys.stdout.flush()
+        for _ in range(4):
+            time.sleep(0.4)
+            print(".", end="", flush=True)
+        print("\b\b\b   ", end="\r")
+    elif status == "ok":
+        print(f"\r  │  └─ {step_name}  ✓")
+
+
 def main():
-    """
-    main function
-    """
     if not is_admin():
         raise NeedPerms("You need to run this script as an admin")
-    print("Moving files to new location")
+
+    print("Starting installation process...\n")
+    print_step("Moving files to new location")
     install_dir = move_files()
-    print("Files moved to new location")
-    print("Creating scheduled task")
-    create_schtask(install_dir)
-    print("Scheduled task created successfully")
-    print("Installation finished")
-    perform_alert()
+    print_step("Moving files", "ok")
+    print_step("Creating scheduled task")
+    task_name = create_schtask(install_dir)
+    print_step("Creating scheduled task", "ok")
+    print_step(f"Scheduled task created under {task_name}", "ok")
+    print("  └─ Installation finished  ✓\n")
+
+    print("╔════════════════════════════════════════════════════╗")
+    print("║    YOU WILL NEED TO RESTART YOUR COMPUTER NOW      ║")
+    print("╚════════════════════════════════════════════════════╝\n")
+
+    time.sleep(10)
 
 
 if __name__ == "__main__":

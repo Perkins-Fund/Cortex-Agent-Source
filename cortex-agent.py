@@ -235,7 +235,7 @@ def handle_file_uploads(file_path):
                     raise FailedToUploadFile(f"Failed to upload file: {file_path}")
 
                 if "status" in status_check.get('results', {}).keys():
-                    # break if we hit a certain time limit so we don't overload the log file
+                    # break if we hit a certain time limit, so we don't overload the log file
                     if waited >= wait_time:
                         did_fail = True
                         is_done = True
