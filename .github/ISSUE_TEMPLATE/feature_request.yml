@@ -1,0 +1,59 @@
+name: Feature Request
+description: Suggest an improvement or new capability for Cortex Agent.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Feature ideas welcome. Keep it practical and include the “why”.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / Motivation
+      description: What pain point are you trying to solve?
+      placeholder: "As a user, I want..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the feature or change you’d like to see.
+      placeholder: "Add an option to..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any workarounds or other approaches?
+      placeholder: "Could also be solved by..."
+    validations:
+      required: false
+
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Impact
+      options:
+        - Nice to have
+        - Important
+        - Critical
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Area
+      options:
+        - label: Agent behavior (watch folder / upload)
+        - label: Windows notifications
+        - label: Installer / scheduled task
+        - label: Build / packaging (PyInstaller)
+        - label: Documentation
+        - label: Other

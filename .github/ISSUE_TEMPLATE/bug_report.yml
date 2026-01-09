@@ -1,0 +1,108 @@
+name: Bug Report
+description: Report something that isn’t working in Cortex Agent.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting an issue! Please include as much detail as possible so we can reproduce it.
+
+  - type: input
+    id: version
+    attributes:
+      label: Cortex Agent version
+      description: If you don’t know, paste the agent build/date or any version output you have.
+      placeholder: "e.g. v1.0.0 or commit SHA"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: OS
+      options:
+        - Windows 11
+        - Windows 10
+        - Windows Server
+        - Linux
+        - macOS
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: python
+    attributes:
+      label: Python version (if building from source)
+      placeholder: "e.g. 3.11.7"
+    validations:
+      required: false
+
+  - type: input
+    id: install_method
+    attributes:
+      label: Install method
+      description: How did you install/run the agent?
+      placeholder: "Traceix deployment zip / built from source / manual scheduled task"
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+      placeholder: "Dropping a file into the watch folder should generate an alert in Traceix..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What actually happened?
+      placeholder: "No alert created / agent crashes / installer fails..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Provide clear, step-by-step instructions.
+      placeholder: |
+        1) Install agent using install.exe as Administrator
+        2) Configure watch folder: C:\...
+        3) Drop file: ...
+        4) Observe: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / console output
+      description: Paste relevant logs. Remove secrets or personal data.
+      render: text
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: windows_notify
+    attributes:
+      label: Windows notification behavior (if applicable)
+      description: Only for Windows users / malicious classifications.
+      options:
+        - label: This issue relates to Windows notifications for malicious classifications
+          required: false
+        - label: I confirmed the file was classified as malicious in Traceix (or have evidence it should be)
+          required: false
+
+  - type: checkboxes
+    id: confidentiality
+    attributes:
+      label: Data safety
+      options:
+        - label: I removed any secrets (API keys, tokens) from logs/config before posting
+          required: true
