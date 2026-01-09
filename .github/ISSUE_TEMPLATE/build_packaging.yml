@@ -1,0 +1,70 @@
+name: Build / Packaging Problem
+description: Problems building the agent/installer (PyInstaller, dependencies, signing, etc.)
+title: "[Build]: "
+labels: ["build", "bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for build failures or packaging problems (PyInstaller, missing deps, etc.).
+
+  - type: dropdown
+    id: target
+    attributes:
+      label: What are you building?
+      options:
+        - cortex-agent (agent executable)
+        - install.exe (installer executable)
+        - both
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS + version
+      placeholder: "e.g. Windows 11 23H2"
+    validations:
+      required: true
+
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      placeholder: "e.g. 3.11.7"
+    validations:
+      required: true
+
+  - type: input
+    id: pyinstaller
+    attributes:
+      label: PyInstaller version
+      placeholder: "e.g. 6.3.0"
+    validations:
+      required: false
+
+  - type: textarea
+    id: command
+    attributes:
+      label: Build command used
+      render: text
+      placeholder: |
+        pyinstaller --clean --onefile --name cortex-agent --manifest ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: error
+    attributes:
+      label: Full error output
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes / suspected cause
+      placeholder: "Started after upgrading Python / happens only on CI / etc."
+    validations:
+      required: false
