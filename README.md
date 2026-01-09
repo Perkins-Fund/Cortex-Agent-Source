@@ -18,6 +18,38 @@ On **Windows**, if Traceix classifies a submitted file as **malicious**, the age
 
 ---
 
+## Support, Issue Reports, and Pull Requests (GitHub)
+
+If something’s broken, confusing, or you have an idea — **use GitHub** so it’s tracked and visible.
+
+### Quick links
+- **Report a bug / problem:** https://github.com/Perkins-Fund/Cortex-Agent-Source/issues
+- **Request a feature:** https://github.com/Perkins-Fund/Cortex-Agent-Source/issues
+- **Open a pull request:** https://github.com/Perkins-Fund/Cortex-Agent-Source/pulls
+
+> **Tip:** If issue templates are available, click **New issue** and pick the closest template (Bug / Feature / Build).
+
+### What to include in an Issue (so we can actually reproduce it)
+Please include:
+- **OS + version** (Windows 10/11, Server, etc.)
+- **How you installed** (Traceix deployment zip vs built from source)
+- **Agent/installer version** (or commit SHA if building)
+- **Steps to reproduce** (exact steps, watch folder path, what you dropped in, what happened)
+- **Logs / console output** (remove secrets/tokens)
+
+### Pull request guidelines (fast approvals)
+PRs are welcome — keep them easy to review:
+- One focused change per PR (or clearly grouped changes)
+- Include testing notes (Windows installer / scheduled task behavior if touched)
+- Don’t commit secrets, tokens, or real customer configs
+- If changing watch-folder behavior, mention performance impact + edge cases
+
+### Security / vulnerability reports
+**Please do not open public issues for security vulnerabilities.**
+If you believe you found a security issue, report it privately via the repository’s **Security** tab (if enabled) or through Traceix support (contact@perkinsfund.org).
+
+---
+
 # Creating a Cortex Agent
 
 Cortex Agents are created and configured in Traceix.
