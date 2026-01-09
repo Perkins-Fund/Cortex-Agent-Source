@@ -49,6 +49,42 @@ PRs are welcome — keep them easy to review:
 If you believe you found a security issue, report it privately via the repository’s **Security** tab (if enabled) or through Traceix support (contact@perkinsfund.org).
 
 ---
+---
+
+## Releases & Versioning
+
+### Where to get releases
+Official builds are published on GitHub Releases:
+https://github.com/Perkins-Fund/Cortex-Agent-Source/releases
+
+> If you downloaded a Cortex Agent from Traceix, you are already using an official deployment package (agent + config + installer).
+
+### Version format
+Cortex Agents use a **4-part** version format:
+
+**`major.minor.patch.push`**  
+Example: **`1.0.0.0`**
+
+- **major** — breaking changes (behavior/config/install changes that may require attention)
+- **minor** — new features or meaningful improvements (backwards-compatible when possible)
+- **patch** — bug fixes and small corrections
+- **push** — re-build / packaging-only updates (no code change intended), hotfix repacks, or rapid deployment iterations
+
+### Upgrade guidance
+- If you’re upgrading across a **major** version, read the release notes carefully.
+- If you hit a regression after upgrading, please open an issue and include:
+  - your previous version → new version
+  - OS/version
+  - install method (Traceix zip vs built from source)
+  - logs/output (redacted)
+
+### Release notes
+Each release includes notes describing:
+- what changed
+- any known issues
+- anything you need to do after upgrading (if applicable)
+
+---
 
 # Creating a Cortex Agent
 
