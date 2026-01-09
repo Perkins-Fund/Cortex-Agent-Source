@@ -49,7 +49,6 @@ PRs are welcome — keep them easy to review:
 If you believe you found a security issue, report it privately via the repository’s **Security** tab (if enabled) or through Traceix support (contact@perkinsfund.org).
 
 ---
----
 
 ## Releases & Versioning
 
