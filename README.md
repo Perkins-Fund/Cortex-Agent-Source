@@ -45,7 +45,7 @@ pyinstaller --clean --onefile --name cortex-agent --manifest assets/cortex-agent
 ```powershell
 cd folder_with_agent_source
 pip install -r requirements.txt
-pyinstaller --clean --onefile --name install --manifest assets/install.manifest --version-file assets/install-version-info.txt --icon assets/install.ico install.py
+pyinstaller --clean --onefile --name install --uac-admin --version-file assets/install-version-info.txt --icon assets/install.ico install.py
 ```
 
 Your compiled output will be in:

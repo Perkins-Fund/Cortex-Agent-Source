@@ -4,6 +4,7 @@ import random
 import subprocess
 
 import shutil
+from win10toast import ToastNotifier
 
 
 # class to throw exception if the task already exists
@@ -38,6 +39,19 @@ def is_admin():
         return bool(ctypes.windll.shell32.IsUserAnAdmin())
     except:
         return False
+
+
+def perform_alert():
+    """
+    perform a Windows alert box
+    """
+    toast = ToastNotifier()
+    toast.show_toast(
+        title="Cortex-Agent-Installer",
+        msg=f"Your Cortex Agent has been installed, for the changes to take effect please restart your PC.",
+        duration=5,
+        threaded=False
+    )
 
 
 def create_install_folder():
@@ -136,6 +150,7 @@ def main():
     create_schtask(install_dir)
     print("Scheduled task created successfully")
     print("Installation finished")
+    perform_alert()
 
 
 if __name__ == "__main__":
