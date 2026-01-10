@@ -10,3 +10,4 @@ build/*
 dist/*
 *.spec
 cortex-agent.log
+assets/signing_certs/cert.pfx

@@ -1,16 +1,18 @@
-import ctypes
-import hashlib
 import os
 import time
+import ctypes
+import hashlib
+import logging
 import datetime
 import configparser
+
 from concurrent.futures import ThreadPoolExecutor
-import logging
 from logging.handlers import RotatingFileHandler
 
 import requests
 import machineid
 import psutil
+
 from win10toast import ToastNotifier
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -106,7 +108,7 @@ if MAX_CONCURRENT_ANALYSES == 0:
 # the variable that holds the processes
 EXECUTOR = ThreadPoolExecutor(max_workers=MAX_CONCURRENT_ANALYSES)
 # base URL for the API
-BASE_URL = "http://172.25.108.61:5132"
+BASE_URL = "https://ai.perkinsfund.org"
 
 
 def is_admin():
