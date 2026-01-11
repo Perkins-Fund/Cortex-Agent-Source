@@ -1,5 +1,6 @@
 import os
 import shutil
+import getpass
 import subprocess
 
 
@@ -45,10 +46,24 @@ def build_agent():
     ])
 
 
+def sign_files():
+    password = getpass.getpass("Enter signing cert password: ")
+    files = ["dist\\cortex-agent.exe", "dist\\install.exe"]
+    for file_ in files:
+        subprocess.run([
+            "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.22621.0\\x64\\signtool.exe", "sign",
+            "/fd", "SHA256",
+            "/f", ".\\assets\\signing_certs\\cert.pfx",
+            "/P", password,
+            file_
+        ])
+
+
 def main():
     clean_dir()
     build_installer()
     build_agent()
+    sign_files()
 
 
 if __name__ == "__main__":
