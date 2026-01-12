@@ -1,6 +1,7 @@
 import os
 import time
 import ctypes
+import getpass
 import hashlib
 import logging
 import datetime
@@ -119,6 +120,47 @@ def is_admin():
         return bool(ctypes.windll.shell32.IsUserAnAdmin())
     except:
         return False
+
+
+def normalize_path(requested):
+    """
+    provides users with the ability to normalize their path using shorthands,
+    the available shorthands are the normal drop locations for Windows malware.
+
+    for example, instead of C:\\Users\\Me you can use !USERHOME!
+    """
+    normalize_templates = {
+        # just the username
+        "!USER!": getpass.getuser(),
+
+        # full path to the users home path
+        "!USERHOME!": f"C:\\Users\\{getpass.getuser()}",
+
+        # local temporary file storage
+        "!LOCALTEMP!": f"C:\\Users\\{getpass.getuser()}\\AppData\\Local\\Temp",
+
+        # roaming storage for AppData files
+        "!ROAM!": f"C:\\Users\\{getpass.getuser()}\\AppData\\Roaming",
+
+        # program data is writeable by everything, so good to have
+        "!PROGDATA!": "C:\\ProgramData",
+
+        # users AppData folder
+        "!APPDATA!": f"C:\\Users\\{getpass.getuser()}\\AppData",
+
+        # Windows temporary files
+        "!WINTEMP!": "C:\\Windows\\Temp",
+
+        # user startup menu path
+        "!USERSTART!": f"C:\\Users\\{getpass.getuser()}\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup",
+
+        # all users startup menu path
+        "!ALLUSERSTART!": "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Startup"
+    }
+    for key in normalize_templates.keys():
+        if key in requested:
+            requested = requested.replace(key, normalize_templates[key])
+    return requested
 
 
 def api_check():
@@ -370,7 +412,8 @@ def parse_config(path="agent.conf", get_alert_on=False, get_accepted_size=False,
     config = configparser.ConfigParser()
     config.read(path)
     if get_folder:
-        return config.get("agent_conf", "watch_folder")
+        folder = config.get("agent_conf", "watch_folder")
+        return normalize_path(folder)
     if get_alert_on:
         return config.get("agent_conf", "alert_on")
     if get_accepted_size:
