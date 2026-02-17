@@ -32,14 +32,14 @@ class UnableToWriteRunner(Exception): pass
 INSTALL_DIR = r"C:\Program Files\CortexAgents"
 
 
-def is_admin() -> bool:
+def is_admin():
     try:
         return bool(ctypes.windll.shell32.IsUserAnAdmin())
     except Exception:
         return False
 
 
-def _parse_uuid_from_conf(conf_path: str) -> str | None:
+def _parse_uuid_from_conf(conf_path):
     """
     Read agent.conf and attempt to extract uuid value.
     Accepts formats like:
@@ -76,7 +76,7 @@ def _parse_uuid_from_conf(conf_path: str) -> str | None:
     return None
 
 
-def create_name(just_agent: bool = False, filename: str = "agent.conf") -> str:
+def create_name(just_agent, filename):
     """
     Create the name for the agent scheduled task (or agent folder name).
     """
@@ -90,7 +90,7 @@ def create_name(just_agent: bool = False, filename: str = "agent.conf") -> str:
     return f"Traceix Cortex Agent - {random.SystemRandom().randint(111111, 999999)}"
 
 
-def create_install_folder() -> str:
+def create_install_folder():
     """
     Create base install folder and agent-specific folder.
     """
@@ -102,7 +102,7 @@ def create_install_folder() -> str:
     return install_dir
 
 
-def move_files() -> str:
+def move_files():
     """
     Move cortex-agent.exe and agent.conf into the install folder.
     """
@@ -120,7 +120,7 @@ def move_files() -> str:
         raise UnableToMoveFiles(str(e))
 
 
-def write_runner_script(installation_dir: str) -> str:
+def write_runner_script(installation_dir):
     """
     Create a short runner script *inside* the agent folder to keep /TR short.
     Uses %~dp0 so it always runs relative to its own directory.
@@ -143,7 +143,7 @@ def write_runner_script(installation_dir: str) -> str:
         raise UnableToWriteRunner(str(e))
 
 
-def create_schtask(installation_dir: str) -> str:
+def create_schtask(installation_dir):
     """
     Create the scheduled task, pointing /TR at the runner script in the install dir.
     """
@@ -192,7 +192,7 @@ def create_schtask(installation_dir: str) -> str:
     return task_name
 
 
-def start_scheduled_task(task_name: str) -> None:
+def start_scheduled_task(task_name):
     r = subprocess.run(
         ["schtasks", "/Run", "/TN", task_name],
         capture_output=True,
