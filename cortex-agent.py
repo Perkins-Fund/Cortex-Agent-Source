@@ -1,6 +1,8 @@
 import os
 import time
 import ctypes
+import random
+import getpass
 import hashlib
 import logging
 import datetime
@@ -39,6 +41,7 @@ class NoConfigFound(Exception): pass
 
 # log file name
 LOG_FILE = "cortex-agent.log"
+SKIP_SUFFIXES = (".partial", ".part", ".tmp", ".crdownload")
 
 
 def setup_logging():
@@ -86,6 +89,11 @@ class AgentHandler(FileSystemEventHandler):
             return
 
         file_path = event.src_path
+
+        if file_path.lower().endswith(SKIP_SUFFIXES):
+            LOG.debug(f"Ignoring temp download file: {file_path}")
+            return
+
         LOG.info(f"File created in watch folder: {file_path}, queued for analysis")
 
         try:
@@ -119,6 +127,47 @@ def is_admin():
         return bool(ctypes.windll.shell32.IsUserAnAdmin())
     except:
         return False
+
+
+def normalize_path(requested):
+    """
+    provides users with the ability to normalize their path using shorthands,
+    the available shorthands are the normal drop locations for Windows malware.
+
+    for example, instead of C:\\Users\\Me you can use !USERHOME!
+    """
+    normalize_templates = {
+        # just the username
+        "!USER!": getpass.getuser(),
+
+        # full path to the users home path
+        "!USERHOME!": f"C:\\Users\\{getpass.getuser()}",
+
+        # local temporary file storage
+        "!LOCALTEMP!": f"C:\\Users\\{getpass.getuser()}\\AppData\\Local\\Temp",
+
+        # roaming storage for AppData files
+        "!ROAM!": f"C:\\Users\\{getpass.getuser()}\\AppData\\Roaming",
+
+        # program data is writeable by everything, so good to have
+        "!PROGDATA!": "C:\\ProgramData",
+
+        # users AppData folder
+        "!APPDATA!": f"C:\\Users\\{getpass.getuser()}\\AppData",
+
+        # Windows temporary files
+        "!WINTEMP!": "C:\\Windows\\Temp",
+
+        # user startup menu path
+        "!USERSTART!": f"C:\\Users\\{getpass.getuser()}\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup",
+
+        # all users startup menu path
+        "!ALLUSERSTART!": "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Startup"
+    }
+    for key in normalize_templates.keys():
+        if key in requested:
+            requested = requested.replace(key, normalize_templates[key])
+    return requested
 
 
 def api_check():
@@ -177,10 +226,44 @@ def get_client_id():
     return client_id
 
 
+def wait_file_ready(path, stable_seconds=1.0, timeout=30):
+    start = time.time()
+    last_size = -1
+    last_change = time.time()
+
+    while True:
+        if not os.path.exists(path):
+            return False
+        try:
+            size = os.path.getsize(path)
+        except:
+            size = -1
+        if size != last_size:
+            last_size = size
+            last_change = time.time()
+        if (time.time() - last_change) >= stable_seconds and size > 0:
+            try:
+                with open(path, "rb"):
+                    return True
+            except OSError:
+                pass
+
+        if (time.time() - start) >= timeout:
+            return False
+
+        time.sleep(0.2 + random.random() * 0.2)
+
+
 def handle_file_uploads(file_path):
     """
     handle the file uploads
     """
+
+    # wait for the file to be done downloading
+    if not wait_file_ready(file_path):
+        LOG.warning("File wasn't ready for processing within 30 seconds, skipping")
+        return None
+
     try:
         if not os.path.isfile(file_path):
             return None
@@ -370,7 +453,8 @@ def parse_config(path="agent.conf", get_alert_on=False, get_accepted_size=False,
     config = configparser.ConfigParser()
     config.read(path)
     if get_folder:
-        return config.get("agent_conf", "watch_folder")
+        folder = config.get("agent_conf", "watch_folder")
+        return normalize_path(folder)
     if get_alert_on:
         return config.get("agent_conf", "alert_on")
     if get_accepted_size:
