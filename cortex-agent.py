@@ -1,6 +1,7 @@
 import os
 import time
 import ctypes
+import random
 import getpass
 import hashlib
 import logging
@@ -40,6 +41,7 @@ class NoConfigFound(Exception): pass
 
 # log file name
 LOG_FILE = "cortex-agent.log"
+SKIP_SUFFIXES = (".partial", ".part", ".tmp", ".crdownload")
 
 
 def setup_logging():
@@ -87,6 +89,11 @@ class AgentHandler(FileSystemEventHandler):
             return
 
         file_path = event.src_path
+
+        if file_path.lower().endswith(SKIP_SUFFIXES):
+            LOG.debug(f"Ignoring temp download file: {file_path}")
+            return
+
         LOG.info(f"File created in watch folder: {file_path}, queued for analysis")
 
         try:
@@ -219,10 +226,44 @@ def get_client_id():
     return client_id
 
 
+def wait_file_ready(path, stable_seconds=1.0, timeout=30):
+    start = time.time()
+    last_size = -1
+    last_change = time.time()
+
+    while True:
+        if not os.path.exists(path):
+            return False
+        try:
+            size = os.path.getsize(path)
+        except:
+            size = -1
+        if size != last_size:
+            last_size = size
+            last_change = time.time()
+        if (time.time() - last_change) >= stable_seconds and size > 0:
+            try:
+                with open(path, "rb"):
+                    return True
+            except OSError:
+                pass
+
+        if (time.time() - start) >= timeout:
+            return False
+
+        time.sleep(0.2 + random.random() * 0.2)
+
+
 def handle_file_uploads(file_path):
     """
     handle the file uploads
     """
+
+    # wait for the file to be done downloading
+    if not wait_file_ready(file_path):
+        LOG.warning("File wasn't ready for processing within 30 seconds, skipping")
+        return None
+
     try:
         if not os.path.isfile(file_path):
             return None

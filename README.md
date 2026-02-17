@@ -1,63 +1,102 @@
 # Cortex Agent Source (Traceix)
 
-Cortex Agents are **triage drop zones** for suspicious files.
+Cortex Agents are **Triage Drop Zones** for suspicious files.
 
-Instead of “monitor everything everywhere,” Cortex Agents focus on one job:
-**turn “what is this file?” into a fast, consistent answer**.
+They’re designed around one simple workflow:
 
-You point an agent at a **dedicated folder**. When new files appear, the agent submits them to Traceix and creates **actionable alerts** in your dashboard.
+**Drop a file into a dedicated folder, get a fast, consistent answer in Traceix.**
 
-> **Not an EDR:** Cortex Agents do **not** continuously monitor processes/memory, collect endpoint telemetry, or provide containment/isolation controls. They’re built for **file intake + triage**.
+Instead of trying to monitor everything on the endpoint, a Cortex Agent focuses on file intake: it watches a folder you choose, submits new files to Traceix, and creates **actionable alerts** in your dashboard.
 
----
-
-## What Cortex Agents do (the drop zone model)
-
-When a Cortex Agent is running, it:
-
-- **Watches a folder you choose** (your “drop zone”)
-- **Detects new files** added to that folder
-- **Submits those files to Traceix** (based on your agent configuration)
-- **Creates an alert** in your Traceix dashboard
-- Lets you **review, triage, export JSON, and mark items reviewed/resolved**
-
-### Why this exists (and why it’s not an EDR)
-EDR is a different category: always-on telemetry, deep hooks, ongoing tuning, and lots of noise.
-
-Cortex Agents are intentionally lighter:
-- **Faster to deploy** (one intake lane can serve a person or a team)
-- **Easier to operate** (drop file → get answer → act)
-- **Lower overhead** (results + alerts, not nonstop endpoint telemetry)
-
-**Bottom line:** EDRs monitor everything all the time. Cortex Agents answer one question extremely well:  
-**“Is this file safe?”**
+> **Not an EDR:** Cortex Agents do **not** continuously monitor processes/memory, collect endpoint telemetry, or provide containment/isolation controls. They exist for **file intake + triage**.
 
 ---
 
-## Who this is for
+## The Triage Drop Zone model
 
-Cortex Agents are for **everyone** — not just big security teams:
+A **Triage Drop Zone** is a dedicated folder used only for suspicious file intake.
 
-- **Solo users**: a personal “file check” lane for downloads/attachments
-- **Small teams / IT**: one shared intake folder that standardizes triage
-- **SOC / DFIR**: consistent enrichment + repeatable evidence packaging
-- **Enterprises / MSPs**: standardized triage lanes without adding another always-on platform
+When the agent is running, it:
+
+* **Watches your chosen drop-zone folder**
+* **Detects new files** added to that folder
+* **Waits until the file is fully written** (prevents 0-byte / partial downloads)
+* **Submits the file to Traceix** using your agent credentials
+* **Creates an alert** in your Traceix dashboard
+* Optionally shows a **local Windows toast notification** when a file is classified as **malicious**
+
+### Why a dedicated folder matters
+
+Pointing the agent at system folders or "busy" directories causes noise and performance issues.
+
+Recommended:
+
+* `C:\Samples\`
+* `C:\Triage\`
+* `C:\Users\<you>\Downloads\Triage\`
+
+Avoid:
+
+* `C:\`
+* `C:\Windows\`
+* Your entire `Downloads\` root (too many non-suspicious files)
+* Any folder with constant background churn (build output, package caches, etc.)
 
 ---
 
-## Common use cases
+## What gets ignored (in-progress downloads)
 
-- Email attachment triage
-- User-reported “is this safe?” intake
-- Suspicious download quarantine folder
-- SOC alert enrichment and evidence packaging
-- Separate intake lanes by workflow (file type, team, customer, etc.)
+Browsers and downloaders often create a temporary file first, then rename it when complete. To prevent processing partial files, the agent ignores common "still downloading" suffixes:
+
+* `.crdownload` (Chrome / Edge)
+* `.part` (Firefox)
+* `.partial`
+* `.tmp`
+
+Once the final file appears without these extensions, the agent queues it for analysis.
 
 ---
 
-## Windows alerting behavior (malicious classifications)
+## Path shortcuts (watch-folder "tricks")
 
-On **Windows**, if Traceix classifies a submitted file as **malicious**, the agent can also trigger a **local Windows notification** so you get an immediate heads-up on the endpoint (in addition to the dashboard alert).
+Cortex Agents support path shortcuts so you don’t have to type full Windows paths in config.
+These shortcuts are expanded at runtime when the agent reads `watch_folder`.
+
+### Supported shortcuts
+
+| Shortcut         | Expands to                                                                          |
+| ---------------- | ----------------------------------------------------------------------------------- |
+| `!USER!`         | your Windows username                                                               |
+| `!USERHOME!`     | `C:\Users\{username}`                                                               |
+| `!LOCALTEMP!`    | `C:\Users\{username}\AppData\Local\Temp`                                            |
+| `!ROAM!`         | `C:\Users\{username}\AppData\Roaming`                                               |
+| `!PROGDATA!`     | `C:\ProgramData`                                                                    |
+| `!APPDATA!`      | `C:\Users\{username}\AppData`                                                       |
+| `!WINTEMP!`      | `C:\Windows\Temp`                                                                   |
+| `!USERSTART!`    | `C:\Users\{username}\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup` |
+| `!ALLUSERSTART!` | `C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Startup`                      |
+
+### Examples
+
+**Example 1 — dedicated triage folder in your home directory**
+
+```ini
+watch_folder = !USERHOME!\Samples
+```
+
+**Example 2 — triage folder inside local temp**
+
+```ini
+watch_folder = !LOCALTEMP!\CortexDrop
+```
+
+**Example 3 — shared drop zone for multiple users**
+
+```ini
+watch_folder = !PROGDATA!\Traceix\DropZone
+```
+
+> Tip: If you use `!PROGDATA!`, create the folder once and set permissions so the intended users/tools can write to it.
 
 ---
 
@@ -66,124 +105,31 @@ On **Windows**, if Traceix classifies a submitted file as **malicious**, the age
 1. **Create an agent in Traceix**
 2. **Download the deployment zip** (agent + config + installer)
 3. **Install it once** on a workstation or server
-4. Use the configured folder as your **intake drop zone**
-5. **Drop files in** → results show up as **dashboard alerts**
-
-> **Important:** Always point Cortex at a **dedicated folder** (e.g., `C:\Samples\` or `/home/user/samples`).  
-> Avoid watching root/system folders (`C:\`, `/`, `/root`, etc.) — too many files can cause high CPU/disk usage and alert spam.
+4. Use the configured folder as your **Triage Drop Zone**
+5. **Drop files in**, results show up as **dashboard alerts**
 
 ---
 
-## Installing & using a Cortex Agent
+## Windows alerting behavior (malicious classifications)
 
-### 1) Download and extract
-From [Traceix](https://traceix.com?utm_source=agent-repo), download your agent deployment zip (typically includes your **agent config**, the **agent binary**, and **install.exe**). Extract it anywhere.
-
-### 2) Run the installer (Admin)
-Run `install.exe` **as Administrator**. This installs the agent and sets it up to launch automatically on the next reboot.
-
-### 3) Start behavior
-After installation, the agent monitors the configured drop-zone folder and creates alerts in your Traceix dashboard as new files appear.
+On Windows, if Traceix classifies a submitted file as **malicious**, the agent can trigger a **local Windows notification** in addition to creating the dashboard alert.
 
 ---
 
 ## Support, Issue Reports, and Pull Requests (GitHub)
 
-If something’s broken, confusing, or you have an idea — **use GitHub** so it’s tracked and visible.
+If something’s broken, confusing, or you have an idea — use GitHub so it’s tracked and visible.
 
-### Quick links
-- **Report a bug / problem:** https://github.com/Perkins-Fund/Cortex-Agent-Source/issues
-- **Request a feature:** https://github.com/Perkins-Fund/Cortex-Agent-Source/issues
-- **Open a pull request:** https://github.com/Perkins-Fund/Cortex-Agent-Source/pulls
+* Report a bug / problem: [https://github.com/Perkins-Fund/Cortex-Agent-Source/issues](https://github.com/Perkins-Fund/Cortex-Agent-Source/issues)
+* Request a feature: [https://github.com/Perkins-Fund/Cortex-Agent-Source/issues](https://github.com/Perkins-Fund/Cortex-Agent-Source/issues)
+* Open a pull request: [https://github.com/Perkins-Fund/Cortex-Agent-Source/pulls](https://github.com/Perkins-Fund/Cortex-Agent-Source/pulls)
 
-> **Tip:** If issue templates are available, click **New issue** and pick the closest template (Bug / Feature / Build).
+**For issues, include:**
 
-### What to include in an Issue (so we can reproduce it)
-Please include:
-- **OS + version** (Windows 10/11, Server, etc.)
-- **How you installed** (Traceix deployment zip vs built from source)
-- **Agent/installer version** (or commit SHA if building)
-- **Steps to reproduce** (watch folder path, what you dropped in, what happened)
-- **Logs / console output** (remove secrets/tokens)
+* OS + version
+* install method (Traceix zip vs built from source)
+* agent/installer version (or commit SHA)
+* steps to reproduce (watch folder path, what you dropped in, what happened)
+* logs/output (redact secrets)
 
-### Pull request guidelines (fast approvals)
-PRs are welcome — keep them easy to review:
-- One focused change per PR (or clearly grouped changes)
-- Include testing notes (Windows installer / scheduled task behavior if touched)
-- Don’t commit secrets, tokens, or real customer configs
-- If changing watch-folder behavior, mention performance impact + edge cases
-
-### Security / vulnerability reports
-**Please do not open public issues for security vulnerabilities.**  
-If you believe you found a security issue, report it privately via the repository’s **Security** tab (if enabled) or through Traceix support (contact@perkinsfund.org).
-
----
-
-## Releases & Versioning
-
-### Where to get releases
-Official builds are published on GitHub Releases:  
-https://github.com/Perkins-Fund/Cortex-Agent-Source/releases
-
-> If you downloaded a Cortex Agent from Traceix, you are already using an official deployment package (agent + config + installer).
-
-### Version format
-Cortex Agents use a **4-part** version format:
-
-**`major.minor.patch.push`**  
-Example: **`1.0.0.0`**
-
-- **major** — breaking changes (behavior/config/install changes that may require attention)
-- **minor** — new features or meaningful improvements (backwards-compatible when possible)
-- **patch** — bug fixes and small corrections
-- **push** — re-build / packaging-only updates (no code change intended), hotfix repacks, or rapid deployment iterations
-
-### Upgrade guidance
-- If you’re upgrading across a **major** version, read the release notes carefully.
-- If you hit a regression after upgrading, please open an issue and include:
-  - previous version → new version
-  - OS/version
-  - install method (Traceix zip vs built from source)
-  - logs/output (redacted)
-
-### Release notes
-Each release includes notes describing:
-- what changed
-- any known issues
-- anything you need to do after upgrading (if applicable)
-
----
-
-## Creating a Cortex Agent
-
-Cortex Agents are created and configured in Traceix.
-
-1. Go to [Traceix](https://traceix.com?utm_source=agent-repo)
-2. Create a new Cortex Agent
-3. Download the deployment zip (agent + config + installer)
-
----
-
-## Building from source
-
-You can build the agent and installer locally using Python + PyInstaller.
-
-### Build the agent executable
-```powershell
-cd folder_with_agent_source
-pip install -r requirements.txt
-pyinstaller --clean --onefile --name cortex-agent --manifest assets/cortex-agent.manifest --version-file assets/cortex-agent-version-info.txt --icon assets/cortex-agent.ico cortex-agent.py
-````
-
-### Build the installer executable
-
-```powershell
-cd folder_with_agent_source
-pip install -r requirements.txt
-pyinstaller --clean --onefile --name install --uac-admin --version-file assets/install-version-info.txt --icon assets/install.ico install.py
-```
-
-Compiled output will be in:
-
-* `dist/cortex-agent*`
-
+**Security reports:** don’t file public issues for vulnerabilities—use the repo Security tab (if enabled) or email [contact@perkinsfund.org](mailto:contact@perkinsfund.org).
